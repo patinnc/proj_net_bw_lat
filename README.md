@@ -157,6 +157,14 @@ sku3_mln_mlx qq2_dirs/192.168.1.96/qq2_shrt.txt
         - click save
         - click run # this can take a while to run. You should eventually see the 1st chart get transformed then the next chart, etc then the next row of charts, and so on.
 
+Below is a image of one of the 13 charts (per SKU & NIC) created in the spreadsheet.
+The Y-axis is cpu-usage where each 100 means 1 cpu is completely busy.
+The X-axis is network traffic in GBytes/sec.
+So the chart shows how cpu-usage increases as the number of client-server pairs are increased and the network bandwidth is increased.
+There are 4 lines, 2 latency-type lines (1 send and 1 receive) which use a lot more cpu than the 2 lower lines.
+The 2 lower line are bandwidth-type tests. The bw-type tests each pair client-server threads have the client thread just doing sends and the server thread just doing receives. Every other client-server pair reverses direction so the server thread does the sends and the client thread does the receives.
+![cpu-usage vs network bandwidth](images/cpu_usage_vs_bw.png?raw=true "cpu-usage vs net bandwidth")
+
 
 --------------------------------------------------------------------------------
 
