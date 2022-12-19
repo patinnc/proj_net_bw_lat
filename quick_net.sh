@@ -298,6 +298,9 @@ fi
 HST=$OTHER
 echo "$0.$LINENO srvr_ip= $SRVR clnt= $CLNT"
 #exit 1
+if [[ ! -e ./tcp_client.x ]] || [[ ! -e ./tcp_server.x ]] || [[ ! -e ./tcp_sort_latency.x ]] || [[ ! -e ./get_tsc.x ]]; then
+  XFER_IN=1
+fi
 if [ "$XFER_IN" == "1" ]; then
       CK_GCC=$(command -v gcc)
       if [ "$CK_GCC" != "" ]; then
