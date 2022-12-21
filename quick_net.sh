@@ -9,6 +9,19 @@ catch_signal() {
     GOT_QUIT=1
 }
 trap 'catch_signal' SIGINT
+ck_last_rc() {
+   local RC=$1
+   local FROM=$2
+   if [[ $RC -gt 0 ]] || [[ "$GOT_QUIT" == "1" ]]; then
+      echo "$0: got non-zero RC=$RC at $LINENO. called from line $FROM. GOT_QUIT= $GOT_QUIT" 1>&2
+      RET_CD=1
+      #kill -term $$ # send this program a terminate signal
+      if [[ "$GOT_QUIT" == "1" ]]; then
+        exit 1
+      fi
+      exit $RC
+   fi
+}
 
 #CLNT=192.168.1.55
 #SRVR=192.168.1.119 
@@ -21,7 +34,7 @@ N_LST_LAT="1 2 3 4 5 6 7 8 10 20 30 40 48 72 96" # lat clients
 TM_RUN=
 Q_IN=
 TYP_NIC=$(lspci|grep Ether| awk '/Mellan/{printf("mlx");exit(0);}/Broadcom/{printf("brc");exit(0);}')
-NET_DEV=$($SCR_DIR/set_eth0.sh -c get_cur_str | awk -v ln="$0.$LINENO.awk" '
+NET_DEV=$(sudo $SCR_DIR/set_eth0.sh -c get_cur_str | awk -v ln="$0.$LINENO.awk" '
   / dev= /{
    if ($4 != "dev="){
      printf("dev= string expected to be field 4, line= %s. missed dev=. error at %s\n", $0, ln) > "/dev/stderr";
@@ -66,8 +79,9 @@ XFER_IN=0
 #exit 1
 USER=root
 SSH_CMD_PFX=()
+KEYS=
 
-while getopts "bhvXzB:C:D:d:L:l:m:n:o:p:q:s:S:t:T:u:" opt; do
+while getopts "bhvXzB:C:D:d:k:L:l:m:n:o:p:q:s:S:t:T:u:" opt; do
   case ${opt} in
     b )
       BOTH_IN=1
@@ -83,6 +97,9 @@ while getopts "bhvXzB:C:D:d:L:l:m:n:o:p:q:s:S:t:T:u:" opt; do
       ;;
     d )
       ODIR=$OPTARG
+      ;;
+    k )
+      KEYS=$OPTARG
       ;;
     l )
       LAT_CPU_IN="$(echo "$OPTARG" | sed 's/,/ /g')"
@@ -142,6 +159,7 @@ while getopts "bhvXzB:C:D:d:L:l:m:n:o:p:q:s:S:t:T:u:" opt; do
       echo "      if the option string doesn't begin with ',' then it replaces the default_tcp_options string entirely."
       echo "      if the option string begins with ',' then it is appended to the default_tcp_options string."
       echo "      For bw tests the bw_altdir=1 option string is added by default, then the new option string logic is done."
+      echo "   -k private_ssh_key  if need a key for ssh then specify path to ssh private key here"
       echo "   -S server_ip"
       echo "   -s length_of_request, def 1024"
       echo "   -l lat_cpu_list   on 48 cpu box this is usually the HT1 cpu of the 1st core with the NIC. "
@@ -196,6 +214,10 @@ while getopts "bhvXzB:C:D:d:L:l:m:n:o:p:q:s:S:t:T:u:" opt; do
       echo "         for -n number_of_client_server_pairs_to_start_list" 
       echo "           for outstanding list"
       echo "             ./do_tcp_client_server.sh ..."
+      echo " "
+      echo " example latency with keys & alternative users (not root)"
+      echo "  ./quick_net.sh -q "cfg_qmax" -l hi  -T "lat" -n max -t 20 -S 10.82.190.150 -C 10.82.191.14 -u some_user -k /home/some_user/.ssh/prv_key -X  2>&1 |  tee tmp_lat.txt"
+      echo "  ./extract_tcp_stats.sh tmp_lat.txt # create 'qq' summary lines"
       exit 1
       ;;
     : )
@@ -210,14 +232,14 @@ while getopts "bhvXzB:C:D:d:L:l:m:n:o:p:q:s:S:t:T:u:" opt; do
 done
 shift $((OPTIND -1))
 if [ "$Q_IN" == "" ]; then
-  $SCR_DIR/set_eth0.sh -c cfg_q8
+  sudo $SCR_DIR/set_eth0.sh -c cfg_q8
 else
-  $SCR_DIR/set_eth0.sh -c $Q_IN
+  sudo $SCR_DIR/set_eth0.sh -c $Q_IN
 fi
 if [ "$PORT_IN" != "" ]; then
   PORT=$PORT_IN
 fi
-$SCR_DIR/set_eth0.sh -c get_cur_str  # get current settings string
+sudo $SCR_DIR/set_eth0.sh -c get_cur_str  # get current settings string
 
   SSH_CMD_PFX=(sudo -u root -i bash -c)
 if [ "$USER" != "root" ]; then
@@ -228,7 +250,7 @@ fi
 #MY_IP=$(ifconfig |grep 192.168|awk '{printf("%s\n", $2);exit(0);}')
 if [ "$SRVR" != "" ]; then
    echo "$0.$LINENO ck srvr= $SRVR"
-MY_IP_NET_DEV=($(ifconfig | awk '
+MY_IP_NET_DEV=($(sudo ifconfig | awk '
    /^ / {
     if ($1 == "inet" && dev != "") {printf("%s\n%s\n", $2, dev);}
    }
@@ -247,7 +269,7 @@ MY_IP_NET_DEV=($(ifconfig | awk '
        if [ "$TRY_DEV" == "" ]; then
          echo "$0.$LINENO missed network device for ip_address $SRVR. Bye"
          echo "$0.$LINENO list of ip_addr and devices= ${MY_IP_NET_DEV[@]}. ifconfig output:"
-         ifconfig
+         sudo ifconfig
          exit 1
        fi
        NET_DEV=$TRY_DEV
@@ -258,13 +280,16 @@ MY_IP_NET_DEV=($(ifconfig | awk '
    done
    
 else
-MY_IP=$(ifconfig |grep 192.168|awk '{printf("%s\n", $2);exit(0);}')
+#MY_IP=$(sudo ifconfig |grep 192.168|awk '{printf("%s\n", $2);exit(0);}')
+#MY_IP=$(sudo ifconfig |grep 192.168|awk '{printf("%s\n", $2);exit(0);}')
+MY_IP=$(hostname -I | awk '{print $1;}')
 fi
 #echo "$0.$LINENO bye"
 #exit 1
 HST=192.168.1.168 # brc
 PAIRS=()
-PAIRS+=(129.213.117.92 10.0.1.103) # 
+PAIRS+=(10.82.190.150 10.82.191.14) 
+PAIRS+=(10.82.191.14 10.82.190.150) # 
 PAIRS+=(192.168.1.187 192.168.1.130) # 
 PAIRS+=(192.168.1.96  192.168.1.168) # 
 PAIRS+=(192.168.1.119 192.168.1.55 ) # 
@@ -295,6 +320,13 @@ if [ "$OTHER" == "" ]; then
   echo "$0.$LINENO didn't find host client pair in PAIRS array for ip_addr= $MY_IP"
   exit 1
 fi
+if [ "$KEYS" != "" ]; then
+  if [ ! -e $KEYS ]; then
+    echo "$0.$LINENO didn't find -k $KEYS file. bye"
+    exit 1
+  fi
+  OPT_KEYS="-i $KEYS"
+fi
 HST=$OTHER
 echo "$0.$LINENO srvr_ip= $SRVR clnt= $CLNT"
 #exit 1
@@ -318,28 +350,38 @@ if [ "$XFER_IN" == "1" ]; then
       fi
       BSNM=$(basename $SCR_DIR)
       cd ..; tar czf $SCR_DIR/tmp/proj_net_bw_lat_sml.tar.gz ${BSNM}/quick_net.sh ${BSNM}/*.c ${BSNM}/*.x ${BSNM}/set_eth0.sh ${BSNM}/mk_tar_file.sh ${BSNM}/get_nic_node_hi_lo_cpu.sh ${BSNM}/do_tcp_client_server.sh ${BSNM}/rd_spin_freq.sh ${BSNM}/get_new_pckts_frames_MBs_int.sh ${BSNM}/mk_irq_smp_affinity.sh ${BSNM}/rd_proc_stat.sh ${BSNM}/extract_tcp_stats.sh
+      echo "$0.$LINENO tar rc= $?"
       cd $SCR_DIR
-      echo "$0.$LINENO scp tmp/proj_net_bw_lat_sml.tar.gz ${USER}@$OTHER:/tmp"
-                       scp tmp/proj_net_bw_lat_sml.tar.gz ${USER}@$OTHER:/tmp
+      echo "$0.$LINENO scp $OPT_KEYS tmp/proj_net_bw_lat_sml.tar.gz ${USER}@$OTHER:/tmp"
+                       scp $OPT_KEYS tmp/proj_net_bw_lat_sml.tar.gz ${USER}@$OTHER:/tmp
+      RC=$?
+      ck_last_rc $RC $LINENO
+      echo "$0.$LINENO scp rc= $RC"
       #echo $0.$LINENO ssh ${USER}@$OTHER "sudo -u root -i bash -c \"cd /root; tar xzf /tmp/proj_net_bw_lat_sml.tar.gz\""
       #ssh -t ${USER}@$OTHER "sudo -u root -i bash -c \"cd /root; tar xzf /tmp/proj_net_bw_lat_sml.tar.gz\""
       #ssh -t ${USER}@$OTHER sudo -u root -i bash -c "cd /root; tar xzf /tmp/proj_net_bw_lat_sml.tar.gz"
       #ssh -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} \"cd /root; tar xzf /tmp/proj_net_bw_lat_sml.tar.gz; whoami; pwd; ls -l\""
       #echo $0.$LINENO ssh -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
-      CMD=$(printf "%q" "cd /root; tar xzf /tmp/proj_net_bw_lat_sml.tar.gz; whoami; pwd")
-      echo $0.$LINENO ssh -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
-                      ssh -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
-  echo "$0.$LINENO did build and transfer to $OTHER. bye"
+      CMD=$(printf "%q" "(cd $SCR_DIR/..; tar xzf /tmp/proj_net_bw_lat_sml.tar.gz; whoami; pwd)")
+      echo $0.$LINENO ssh $OPT_KEYS $OPT_KEYS -A -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
+                      ssh $OPT_KEYS -A -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
+      RC=$?
+      ck_last_rc $RC $LINENO
+      echo "$0.$LINENO scp rc= $RC"
+  echo "$0.$LINENO did build and transfer to $OTHER. RC= $?"
 fi
 echo "$0.$LINENO ck scp"
 #exit 1
 
-CMD=$(printf "%q" "cd $SCR_DIR; $SCR_DIR/set_eth0.sh -c cfg_qmax; $SCR_DIR/../60secs/set_freq.sh -g performance")
-echo $0.$LINENO try ssh -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
-                    ssh -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
-echo $0.$LINENO did ssh -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
-#ssh -t ${USER}@$OTHER "cd $SCR_DIR; $SCR_DIR/set_eth0.sh -c cfg_qmax; $SCR_DIR/../60secs/set_freq.sh -g performance"
-$SCR_DIR/../60secs/set_freq.sh -g performance
+CMD=$(printf "%q" "(cd $SCR_DIR; sudo $SCR_DIR/set_eth0.sh -c cfg_qmax; sudo $SCR_DIR/../60secs/set_freq.sh -g performance)")
+echo $0.$LINENO try ssh $OPT_KEYS -A -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
+                    ssh $OPT_KEYS -A -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
+      RC=$?
+      ck_last_rc $RC $LINENO
+      echo "$0.$LINENO scp rc= $RC"
+echo $0.$LINENO did ssh $OPT_KEYS -A -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
+#ssh $OPT_KEYS -t ${USER}@$OTHER "cd $SCR_DIR; $SCR_DIR/set_eth0.sh -c cfg_qmax; $SCR_DIR/../60secs/set_freq.sh -g performance"
+sudo $SCR_DIR/../60secs/set_freq.sh -g performance
 
 echo "$0.$LINENO got to here"
 #exit 0
@@ -347,10 +389,10 @@ echo "$0.$LINENO got to here"
 if [ "1" == "2" ]; then
 if [ "$XFER_IN" == "0" ]; then
 TAR=$($SCR_DIR/mk_tar_file.sh | awk '/^proj_net/{print $0;}')
-scp ../$TAR ${USER}@$OTHER:
+scp $OPT_KEYS ../$TAR ${USER}@$OTHER:
 CMD=$(printf "%q" "tar xzf $TAR")
-ssh -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
-#ssh ${USER}@$OTHER "tar xzf $TAR"
+ssh $OPT_KEYS -A -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
+#ssh $OPT_KEYS ${USER}@$OTHER "tar xzf $TAR"
 echo "$0.$LINENO did tar $TAR to ${USER}@$OTHER and untar"
 fi
 fi
@@ -447,11 +489,11 @@ for TYP in $TYP_LST; do
   
   for Q in $Q_LST; do
     if [[ "$Q" == *"cfg_"* ]]; then
-      $SCR_DIR/set_eth0.sh -c ${Q}
+      sudo $SCR_DIR/set_eth0.sh -c ${Q}
     else
-      $SCR_DIR/set_eth0.sh -c cfg_q${Q}
+      sudo $SCR_DIR/set_eth0.sh -c cfg_q${Q}
     fi
-    $SCR_DIR/set_eth0.sh -c get_cur_str  # get current settings string
+    sudo $SCR_DIR/set_eth0.sh -c get_cur_str  # get current settings string
     for CPU_BEG in $BEG_LST; do
       for N in $N_LST; do
         for i in $OUT; do
@@ -464,7 +506,7 @@ for TYP in $TYP_LST; do
           echo $SCR_DIR/do_tcp_client_server.sh -C $CLNT -S $SRVR  -s $MSG_LEN -N $NET_DEV -n $N -t $TM -l $CPU_BEG -d $ODIR  -m server  $LIMIT_BW  -p $PORT -o $i $OPT_D -x -u $USER >&2
           echo $SCR_DIR/do_tcp_client_server.sh -C $CLNT -S $SRVR  -s $MSG_LEN -N $NET_DEV  -n $N -t $TM -l $CPU_BEG -d $ODIR  -m server  $LIMIT_BW  -p $PORT -o $i $OPT_D -x -u $USER
                $SCR_DIR/do_tcp_client_server.sh -C $CLNT -S $SRVR  -s $MSG_LEN -N $NET_DEV -n $N -t $TM -l $CPU_BEG -d $ODIR  -m server  $LIMIT_BW  -p $PORT -o $i $OPT_D -x -u $USER
-          $SCR_DIR/get_new_pckts_frames_MBs_int.sh -N $NET_DEV -a read -d $ODIR -f tmp.txt -s sum.txt
+          sudo $SCR_DIR/get_new_pckts_frames_MBs_int.sh -N $NET_DEV -a read -d $ODIR -f tmp.txt -s sum.txt
           if [[ "$OPT_D" != *"no_lat"* ]]; then
             if [ "$GOT_QUIT" == "1" ]; then
               echo "$0.$LINENO got quit. bye"
@@ -479,14 +521,17 @@ for TYP in $TYP_LST; do
 done  # TST_TYP
 
 if [[ "$BOTH_IN" == "1" ]] && [[ "$TYP_NIC" == "brc" ]]; then
-  echo "$0.$LINENO ssh -t -n ${USER}@$OTHER \"cd $SCR_DIR; nohup ${QT_ARR[@]} &\""
-  CMD=$(printf "%q" "cd $SCR_DIR; nohup ${QT_ARR[@]} &")
-  ssh -t -n ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
-  #ssh -t -n ${USER}@$OTHER "cd $SCR_DIR; nohup ${QT_ARR[@]} &"
+  echo "$0.$LINENO ssh $OPT_KEYS -A -t -n ${USER}@$OTHER \"cd $SCR_DIR; nohup ${QT_ARR[@]} &\""
+  CMD=$(printf "%q" "(cd $SCR_DIR; nohup ${QT_ARR[@]} &)")
+  ssh $OPT_KEYS -A -t -n ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
+  RC=$?
+  ck_last_rc $RC $LINENO
+  echo "$0.$LINENO ssh rc= $RC"
+  #ssh $OPT_KEYS -t -n ${USER}@$OTHER "cd $SCR_DIR; nohup ${QT_ARR[@]} &"
   echo "$0.$LINENO done"
 fi
 #sysctl -w net.ipv4.tcp_low_latency=0  # reset
 #$SCR_DIR/set_eth0.sh -c cfg_q8
 echo "$0.$LINENO all done. bye"
 echo "$0.$LINENO all done. bye" >&2
-$SCR_DIR/set_eth0.sh -c $TYP_NIC
+sudo $SCR_DIR/set_eth0.sh -c $TYP_NIC

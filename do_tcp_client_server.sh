@@ -2,7 +2,8 @@
 
 SCR_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 cd $SCR_DIR
-MY_IP=$(ifconfig |grep 192.168|awk '{printf("%s\n", $2);exit(0);}')
+#MY_IP=$(ifconfig |grep 192.168|awk '{printf("%s\n", $2);exit(0);}')
+MY_IP=$(hostname -I | awk '{print $1;}')
 N_START=1
 PORT=8000
 OUTS_REQ=1
@@ -42,7 +43,7 @@ EXTRA=0
 NET_DEV=eth0
 USER=root
 
-while getopts "hvzxB:C:D:d:L:l:s:S:m:n:N:o:p:t:T:u:" opt; do
+while getopts "hvzxB:C:D:d:k:L:l:s:S:m:n:N:o:p:t:T:u:" opt; do
   case ${opt} in
     B )
       BW_MAX=$OPTARG
@@ -55,6 +56,9 @@ while getopts "hvzxB:C:D:d:L:l:s:S:m:n:N:o:p:t:T:u:" opt; do
       ;;
     d )
       ODIR=$OPTARG
+      ;;
+    k )
+      KEYS=$OPTARG
       ;;
     l )
       LAT_CPU=$OPTARG
@@ -108,6 +112,7 @@ while getopts "hvzxB:C:D:d:L:l:s:S:m:n:N:o:p:t:T:u:" opt; do
       echo "   -D tcp_option_string  like -D maxseg=4csv900 "
       echo "   -S server_ip"
       echo "   -s length_of_request, def 1024"
+      echo "   -k private_ssh_key_file  if you need a private key to ssh to client host then use this option"
       echo "   -m mode  mode= client or server or latency. this is for the case of running on the same host (so client_ip == server_ip)"
       echo "       if you are starting a run use '-m server'... the server code will invoke to client side. After the run you can do '-m latency' to gen latency stats"
       echo "       mode can also be server_scp which causes the tcp_*.sh, tcp_*.x and tcp_*.c files to be scp'd to client (if client!=server). scp'ing increases time of script when called from other scripts"
@@ -152,6 +157,13 @@ shift $((OPTIND -1))
  
 if [[ "$ODIR" != "" ]] && [[ ! -d "$ODIR" ]]; then
   mkdir -p "$ODIR"
+fi
+if [ "$KEYS" != "" ]; then
+  if [ ! -e $KEYS ]; then
+    echo "$0.$LINENO didn't find -k $KEYS file. bye"
+    exit 1
+  fi
+  OPT_KEYS="-i $KEYS"
 fi
 SSH_CMD_PFX=()
 if [ "$USER" != "root" ]; then
@@ -276,8 +288,11 @@ if [ "$MODE" == "server" ]; then
       fi
       if [ "$DO_SCP" == "1" ]; then
       #scp do_tcp_client_server.sh $CLNT:$SCR_DIR/do_tcp_client_server.sh
-      echo $0.$LINENO scp do_tcp_client_server.sh tcp_server.* tcp_client.* tcp_sort_latency.* ${USER}@$CLNT:$SCR_DIR/
-                      scp do_tcp_client_server.sh tcp_server.* tcp_client.* tcp_sort_latency.* ${USER}@$CLNT:$SCR_DIR/
+      echo $0.$LINENO scp $OPT_KEYS do_tcp_client_server.sh tcp_server.* tcp_client.* tcp_sort_latency.* ${USER}@$CLNT:$SCR_DIR/
+                      scp $OPT_KEYS do_tcp_client_server.sh tcp_server.* tcp_client.* tcp_sort_latency.* ${USER}@$CLNT:$SCR_DIR/
+      RC=$?
+      ck_last_rc $RC $LINENO
+      echo "$0.$LINENO scp rc= $RC"
       fi
       #echo "$0.$LINENO bye"
       #exit 0
@@ -385,12 +400,18 @@ if [ "$MODE" == "server" ]; then
       echo "$0.$LINENO got here"
       if [ 1 == 1 ]; then
       CMD=$(printf "%q" "$SCR_DIR/do_tcp_client_server.sh $OPT_D $OPT_V $OPT_BW_MAX $OPT_PKTS -m client -S $SRVR -s $MSG_LEN -n $N_START -o $OUTS_REQ -t $TM_RUN -p $PORT_RD,$PORT_WR -d $ODIR $OPT_LAT $OPT_SKIP_CLIENT_LAT ")
-      echo $0.$LINENO ssh -t ${USER}@$CLNT "${SSH_CMD_PFX[@]} $CMD" > $ODIR/start_do_tcp_client_server.sh.txt
+      echo $0.$LINENO ssh $OPT_KEYS -A -t ${USER}@$CLNT "${SSH_CMD_PFX[@]} $CMD" > $ODIR/start_do_tcp_client_server.sh.txt
       echo "$0.$LINENO before do_tcp_client_server.sh -m client got here beg date_time= $TM_DT abs_ts= $TM_beg"
-                      ssh -t ${USER}@$CLNT "${SSH_CMD_PFX[@]} $CMD" >> $ODIR/start_do_tcp_client_server.sh.txt
+                      ssh $OPT_KEYS -A -t ${USER}@$CLNT "${SSH_CMD_PFX[@]} $CMD" >> $ODIR/start_do_tcp_client_server.sh.txt
+      RC=$?
+      ck_last_rc $RC $LINENO
+      echo "$0.$LINENO ssh rc= $RC"
       else
-      echo $0.$LINENO ssh ${USER}@${CLNT} "$SCR_DIR/do_tcp_client_server.sh $OPT_D $OPT_V $OPT_BW_MAX $OPT_PKTS -m client -S $SRVR -s $MSG_LEN -n $N_START -o $OUTS_REQ -t $TM_RUN -p $PORT_RD,$PORT_WR -d $ODIR $OPT_LAT $OPT_SKIP_CLIENT_LAT " > $ODIR/start_do_tcp_client_server.sh.txt
-                      ssh ${USER}@${CLNT} "$SCR_DIR/do_tcp_client_server.sh $OPT_D $OPT_V $OPT_BW_MAX $OPT_PKTS -m client -S $SRVR -s $MSG_LEN -n $N_START -o $OUTS_REQ -t $TM_RUN -p $PORT_RD,$PORT_WR -d $ODIR $OPT_LAT $OPT_SKIP_CLIENT_LAT " >> $ODIR/start_do_tcp_client_server.sh.txt
+      echo $0.$LINENO ssh $OPT_KEYS -A -t  ${USER}@${CLNT} "$SCR_DIR/do_tcp_client_server.sh $OPT_D $OPT_V $OPT_BW_MAX $OPT_PKTS -m client -S $SRVR -s $MSG_LEN -n $N_START -o $OUTS_REQ -t $TM_RUN -p $PORT_RD,$PORT_WR -d $ODIR $OPT_LAT $OPT_SKIP_CLIENT_LAT " > $ODIR/start_do_tcp_client_server.sh.txt
+                      ssh $OPT_KEYS -A -t ${USER}@${CLNT} "$SCR_DIR/do_tcp_client_server.sh $OPT_D $OPT_V $OPT_BW_MAX $OPT_PKTS -m client -S $SRVR -s $MSG_LEN -n $N_START -o $OUTS_REQ -t $TM_RUN -p $PORT_RD,$PORT_WR -d $ODIR $OPT_LAT $OPT_SKIP_CLIENT_LAT " >> $ODIR/start_do_tcp_client_server.sh.txt
+      RC=$?
+      ck_last_rc $RC $LINENO
+      echo "$0.$LINENO ssh rc= $RC"
       fi
       echo "$0.$LINENO got here"
     else
@@ -546,17 +567,26 @@ if [[ "$MODE" == "latency" ]]; then
   if [ ! -e $TMP_UNSRTED ]; then
       CMD=$(printf "%q" "cd $SCR_DIR; cat $ODIR/tcp_client_*_latency.txt > /tmp/tmp_lat_all_unsorted.txt")
       echo "$0.$LINENO got here"
-      echo $0.$LINENO ssh -t ${USER}@$CLNT "${SSH_CMD_PFX[@]} $CMD"
-                      ssh -t ${USER}@$CLNT "${SSH_CMD_PFX[@]} $CMD"
+      echo $0.$LINENO ssh $OPT_KEYS -A -t ${USER}@$CLNT "${SSH_CMD_PFX[@]} $CMD"
+                      ssh $OPT_KEYS -A -t ${USER}@$CLNT "${SSH_CMD_PFX[@]} $CMD"
+      RC=$?
+      ck_last_rc $RC $LINENO
+      echo "$0.$LINENO ssh rc= $RC"
       echo "$0.$LINENO got here"
-  #ssh ${USER}@${CLNT} "cd $SCR_DIR; cat $ODIR/tcp_client_*_latency.txt > $ODIR/tmp_lat_all_unsorted.txt"
-   echo $0.$LINENO scp ${USER}@${CLNT}:/tmp/tmp_lat_all_unsorted.txt $ODIR/tmp_lat_all_unsorted.txt >> tmp/tmp.jnk
-                   scp ${USER}@${CLNT}:/tmp/tmp_lat_all_unsorted.txt $ODIR/tmp_lat_all_unsorted.txt 2>> tmp/tmp2.jnk
+  #ssh $OPT_KEYS ${USER}@${CLNT} "cd $SCR_DIR; cat $ODIR/tcp_client_*_latency.txt > $ODIR/tmp_lat_all_unsorted.txt"
+   echo $0.$LINENO scp $OPT_KEYS ${USER}@${CLNT}:/tmp/tmp_lat_all_unsorted.txt $ODIR/tmp_lat_all_unsorted.txt >> tmp/tmp.jnk
+                   scp $OPT_KEYS ${USER}@${CLNT}:/tmp/tmp_lat_all_unsorted.txt $ODIR/tmp_lat_all_unsorted.txt 2>> tmp/tmp2.jnk
+      RC=$?
+      ck_last_rc $RC $LINENO
+      echo "$0.$LINENO scp rc= $RC"
                    CMD=$(printf "%q" "cd $SCR_DIR/$ODIR; rm /tmp/tmp_lat_all_unsorted.txt; rm tcp_client_80*_latency.txt")
       echo "$0.$LINENO got here"
-                   ssh -t ${USER}@$CLNT "${SSH_CMD_PFX[@]} $CMD"
+                   ssh $OPT_KEYS -A -t ${USER}@$CLNT "${SSH_CMD_PFX[@]} $CMD"
+      RC=$?
+      ck_last_rc $RC $LINENO
+      echo "$0.$LINENO ssh rc= $RC"
       echo "$0.$LINENO got here"
-                  #ssh ${USER}@${CLNT} "cd $SCR_DIR/$ODIR; rm tmp_lat_all_unsorted.txt; rm tcp_client_80*_latency.txt"
+                  #ssh $OPT_KEYS ${USER}@${CLNT} "cd $SCR_DIR/$ODIR; rm tmp_lat_all_unsorted.txt; rm tcp_client_80*_latency.txt"
     if [ ! -e $TMP_UNSRTED ]; then
       echo "$0.$LINENO didn't find unsorted latency file $TMP_UNSRTED. bye"
       exit 1

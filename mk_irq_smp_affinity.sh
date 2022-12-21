@@ -43,7 +43,7 @@ if [[ -d $ODIR ]] && [[ "$ODIR" != "./" ]] && [[ -e $ODIR/ethtool.txt ]]; then
   RING_BUFS=$(cat $ODIR/ethtool.txt |grep Combined|tail -1|$AWK_BIN '{printf("%s\n", $2);}')
   ck_last_rc $? $LINENO
 else
-  RING_BUFS=$(ethtool -l $NET_DEV|grep Combined|tail -1|$AWK_BIN '{printf("%s\n", $2);}')
+  RING_BUFS=$(sudo ethtool -l $NET_DEV|grep Combined|tail -1|$AWK_BIN '{printf("%s\n", $2);}')
   ck_last_rc $? $LINENO
 fi
 declare -A IRQ_AFF_ARR
@@ -68,15 +68,20 @@ if [[ -d $ODIR ]] && [[ "$ODIR" != "./" ]] && [[ -e $SMP_FILE ]]; then
 else
   : > $SMP_FILE # set file sz to 0 bytes
   #echo "$0.$LINENO net_irqs $NET_IRQS"
+  j=-1
   for i in $NET_IRQS; do
     #printf "irq %s\n" $i
+    if [ ! -e /proc/irq/$i/smp_affinity_list ]; then
+      continue
+    fi
+    j=$((j+1))
     CPU=$(cat /proc/irq/$i/smp_affinity_list)
     if [[ "$CPU" == *"-"* ]] || [[ "$CPU" == *","* ]]; then
      echo "$0.LINENO skip - or , $CPU"
       continue
     fi
     echo "$i $CPU" >> $SMP_FILE
-    IRQ_AFF_ARR[$i]=$CPU
+    IRQ_AFF_ARR[$j]=$CPU
   done
   #cat $SMP_FILE
 fi

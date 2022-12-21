@@ -184,27 +184,27 @@ if [ "$ACT" == "get" ]; then
 
     lscpu > $ODIR/lscpu.txt
     $SCR_DIR/mk_irq_smp_affinity.sh $ODIR $NET_DEV
-    (lspci |grep Ethernet;echo ethtool -l;  ethtool -l $NET_DEV; echo ethtool -c; ethtool -c $NET_DEV; echo ethtool -g; ethtool -g $NET_DEV;) > $ODIR/ethtool.txt
-    ethtool -i $NET_DEV > $ODIR/ethtool_i.txt
+    (lspci |grep Ethernet;echo ethtool -l; sudo ethtool -l $NET_DEV; echo ethtool -c; sudo ethtool -c $NET_DEV; echo ethtool -g; sudo ethtool -g $NET_DEV;) > $ODIR/ethtool.txt
+    sudo ethtool -i $NET_DEV > $ODIR/ethtool_i.txt
 
   LST_FLS=$(ls -1 /sys/class/net/$NET_DEV/statistics/)
   ETH_STATS=$ODIR/eth0_statistics_0.txt
   : > $ETH_STATS
   for j in $LST_FLS; do
-     v=$(cat /sys/class/net/$NET_DEV/statistics/$j)
+     v=$(sudo cat /sys/class/net/$NET_DEV/statistics/$j)
      echo "$v $j" >> $ETH_STATS
   done
   cat /proc/softirqs > $ODIR/proc_softirqs_0.txt
   cat /proc/net/softnet_stat > $ODIR/softnet_stat_0.txt
   cat /proc/interrupts > $ODIR/proc_interrupts_0.txt
-  ethtool -S $NET_DEV > $ODIR/ethtool_S_0.txt
+  sudo ethtool -S $NET_DEV > $ODIR/ethtool_S_0.txt
   netstat -s > $ODIR/netstat_s_0.txt
   cat /proc/stat > $ODIR/proc_stat_0.txt
 
 
   if [ "$EXTRA" != "0" ]; then
-    echo "nohup $PRF_BIN stat -e cpu-clock,duration_time,msr/aperf/,msr/mperf/,msr/tsc/ -a -o $ODIR/perf_stat_all.txt -I 1000  -- sleep $SLP  > $ODIR/perf_stat_all_stdout.txt 2> $ODIR/perf_stat_all_stderr.txt &"
-    nohup $PRF_BIN stat -e cpu-clock,duration_time,msr/aperf/,msr/mperf/,msr/tsc/ -a -o $ODIR/perf_stat_all.txt -I 1000  -- sleep $SLP  > $ODIR/perf_stat_all_stdout.txt 2> $ODIR/perf_stat_all_stderr.txt &
+    echo "sudo nohup $PRF_BIN stat -e cpu-clock,duration_time,msr/aperf/,msr/mperf/,msr/tsc/ -a -o $ODIR/perf_stat_all.txt -I 1000  -- sleep $SLP  > $ODIR/perf_stat_all_stdout.txt 2> $ODIR/perf_stat_all_stderr.txt &"
+    sudo nohup $PRF_BIN stat -e cpu-clock,duration_time,msr/aperf/,msr/mperf/,msr/tsc/ -a -o $ODIR/perf_stat_all.txt -I 1000  -- sleep $SLP  > $ODIR/perf_stat_all_stdout.txt 2> $ODIR/perf_stat_all_stderr.txt &
     PRF_ALL_PID=$!
     TM_PRF_BEG=$(date +"%s.%N")
     echo "$0.$LINENO abs_ts start perf_stat tm= $TM_PRF_BEG"
@@ -244,7 +244,7 @@ if [ "$ACT" == "get" ]; then
       cat /proc/interrupts | grep -E "CPU0|mlx|$NET_DEV" >> $OFILE
       echo ""                     >> $OFILE
       echo "__ethtool_S__"        >> $OFILE
-      ethtool -S $NET_DEV        >> $OFILE
+      sudo ethtool -S $NET_DEV        >> $OFILE
       echo ""                     >> $OFILE
       echo "__netstat_s__"        >> $OFILE
       netstat -s                  >> $OFILE
@@ -301,7 +301,7 @@ if [ "$ACT" == "get" ]; then
   cat /proc/interrupts > $ODIR/proc_interrupts_1.txt
   cat /proc/softirqs > $ODIR/proc_softirqs_1.txt
   cat /proc/net/softnet_stat > $ODIR/softnet_stat_1.txt
-  ethtool -S $NET_DEV > $ODIR/ethtool_S_1.txt
+  sudo ethtool -S $NET_DEV > $ODIR/ethtool_S_1.txt
   netstat -s > $ODIR/netstat_s_1.txt
   #if [ "$EXTRA" != "0" ]; then
     #if [ ! -e $ODIR/proc_stat_1.txt ]; then
@@ -353,16 +353,16 @@ if [ "$ACT" == "read" ]; then
     BEGIN{
       n = split(net_int, net_arr, " ");
       for (i=1; i <= n; i++) {
-	int_list[net_arr[i]":"] = i;
-	int_lkup[i] = net_arr[i]":";
+        int_list[net_arr[i]":"] = i;
+        int_lkup[i] = net_arr[i]":";
         #printf("int[%d]= %s\n", i, int_lkup[i]);
       }
       #printf("irq_n= %d\n", n);
     }
     {
       if (FILENAME != fl_prev) {
-	      fl++;
-	      fl_prev = FILENAME;
+        fl++;
+        fl_prev = FILENAME;
       }
       if (!($1 in int_list)) {next;}
       for(i=1; i <= n; i++) {
@@ -388,8 +388,8 @@ if [ "$ACT" == "read" ]; then
   $AWK -v metric="softirqsK/s" -v tm="$TM_RUN" '
     /NET_RX:|NET_TX:/ {
       if (FILENAME != fl_prev) {
-	      fl++;
-	      fl_prev = FILENAME;
+        fl++;
+        fl_prev = FILENAME;
       }
       val = 0;
       #for (i=2; i <= 10; i++) { val += $i; }
@@ -417,8 +417,8 @@ if [ "$ACT" == "read" ]; then
     }
     {
       if (FILENAME != fl_prev) {
-	      fl++;
-	      fl_prev = FILENAME;
+        fl++;
+        fl_prev = FILENAME;
       }
     }
     /rx_bytes|tx_bytes|rx_packets|tx_packets/{
@@ -640,25 +640,13 @@ fi
   printf "tm_end= %.4f\n" $TM_END
   printf "tm_end-tm_beg= %.4f\n" $(awk -v tm1="$TM_END" -v tm0="$TM_BEG" 'BEGIN{printf("%.6f", tm1-tm0);exit(0);}')
   printf "tm_run= %.4f\n" $TM_RUN
-  $AWK -v metric="frameK/s" -v tm="$TM_RUN" '
-    /_ucast_frames:/{
-      if (FILENAME != fl_prev) {
-	      fl++;
-	      fl_prev = FILENAME;
-      }
-      v[fl] += $2;
-     #printf("argind= %d argc= %s fl= %s v= %s\n", ARGIND, ARGC, fl, $1);
-    }
-    END{
-        printf("%s= %.3f\n", metric, 1e-3*(v[2]-v[1])/tm);
-    }
-  ' $ODIR/ethtool_S_0.txt $ODIR/ethtool_S_1.txt
-    ck_last_rc $? $LINENO
+  $AWK -v tm="$TM_RUN" -f $SCR_DIR/ethtool_S_diff.awk $ODIR/ethtool_S_0.txt $ODIR/ethtool_S_1.txt
+  ck_last_rc $? $LINENO
   $AWK -v metric="ethtool_S MB/s" -v tm="$TM_RUN" '
     /rx_bytes:|tx_bytes:/{
       if (FILENAME != fl_prev) {
-	      fl++;
-	      fl_prev = FILENAME;
+        fl++;
+        fl_prev = FILENAME;
       }
       v[fl] += $2;
      #printf("argind= %d argc= %s fl= %s v= %s\n", ARGIND, ARGC, fl, $1);

@@ -55,7 +55,7 @@ if [[ -d $ODIR ]] && [[ "$ODIR" != "./" ]] && [[ -e $ODIR/ethtool.txt ]]; then
   RING_BUFS=$(cat $ODIR/ethtool.txt |grep Combined|tail -1|$AWK_BIN '{printf("%s\n", $2);}')
   ck_last_rc $? $LINENO
 else
-  RING_BUFS=$(ethtool -l $NET_DEV |grep Combined|tail -1|$AWK_BIN '{printf("%s\n", $2);}')
+  RING_BUFS=$(sudo ethtool -l $NET_DEV |grep Combined|tail -1|$AWK_BIN '{printf("%s\n", $2);}')
   ck_last_rc $? $LINENO
 fi
 declare -A IRQ_AFF_ARR
