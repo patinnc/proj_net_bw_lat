@@ -246,6 +246,7 @@ if [ "$USER" != "root" ]; then
   #SSH_CMD_PFX=("sudo" "-u" "root" "-i" "bash" "-c")
   SSH_CMD_PFX=(sudo -u root -i bash -c)
 fi
+  SSH_CMD_PFX=(bash -c)
    echo "$0.$LINENO ck srvr= $SRVR"
 #MY_IP=$(ifconfig |grep 192.168|awk '{printf("%s\n", $2);exit(0);}')
 if [ "$SRVR" != "" ]; then
@@ -330,6 +331,17 @@ fi
 HST=$OTHER
 echo "$0.$LINENO srvr_ip= $SRVR clnt= $CLNT"
 #exit 1
+if [ ! -d tmp ]; then
+  mkdir tmp
+fi
+if [[ "$ODIR" != "" ]] && [[ ! -d "$ODIR" ]]; then
+  mkdir -p $ODIR
+fi
+      CMD=$(printf "%q" "(cd $SCR_DIR/; mkdir -p tmp; mkdir -p $ODIR)")
+      echo $0.$LINENO ssh $OPT_KEYS $OPT_KEYS -A -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
+                      ssh $OPT_KEYS -A -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
+      RC=$?
+      ck_last_rc $RC $LINENO
 if [[ ! -e ./tcp_client.x ]] || [[ ! -e ./tcp_server.x ]] || [[ ! -e ./tcp_sort_latency.x ]] || [[ ! -e ./get_tsc.x ]]; then
   XFER_IN=1
 fi
@@ -349,7 +361,7 @@ if [ "$XFER_IN" == "1" ]; then
         done
       fi
       BSNM=$(basename $SCR_DIR)
-      cd ..; tar czf $SCR_DIR/tmp/proj_net_bw_lat_sml.tar.gz ${BSNM}/quick_net.sh ${BSNM}/*.c ${BSNM}/*.x ${BSNM}/set_eth0.sh ${BSNM}/mk_tar_file.sh ${BSNM}/get_nic_node_hi_lo_cpu.sh ${BSNM}/do_tcp_client_server.sh ${BSNM}/rd_spin_freq.sh ${BSNM}/get_new_pckts_frames_MBs_int.sh ${BSNM}/mk_irq_smp_affinity.sh ${BSNM}/rd_proc_stat.sh ${BSNM}/extract_tcp_stats.sh
+      cd ..; tar czf $SCR_DIR/tmp/proj_net_bw_lat_sml.tar.gz ${BSNM}/quick_net.sh ${BSNM}/*.c ${BSNM}/*.x ${BSNM}/set_eth0.sh ${BSNM}/mk_tar_file.sh ${BSNM}/get_nic_node_hi_lo_cpu.sh ${BSNM}/do_tcp_client_server.sh ${BSNM}/rd_spin_freq.sh ${BSNM}/get_new_pckts_frames_MBs_int.sh ${BSNM}/mk_irq_smp_affinity.sh ${BSNM}/rd_proc_stat.sh ${BSNM}/extract_tcp_stats.sh ${BSNM}/*.awk
       echo "$0.$LINENO tar rc= $?"
       cd $SCR_DIR
       echo "$0.$LINENO scp $OPT_KEYS tmp/proj_net_bw_lat_sml.tar.gz ${USER}@$OTHER:/tmp"
@@ -397,12 +409,6 @@ echo "$0.$LINENO did tar $TAR to ${USER}@$OTHER and untar"
 fi
 fi
 #exit 1
-if [ ! -d tmp ]; then
-  mkdir tmp
-fi
-if [[ "$ODIR" != "" ]] && [[ ! -d "$ODIR" ]]; then
-  mkdir -p $ODIR
-fi
 
 OPT_D=
 OPT_D="quickack=0xf_csv1"

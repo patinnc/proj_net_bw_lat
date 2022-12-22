@@ -113,6 +113,7 @@ while getopts "hvzxB:C:D:d:k:L:l:s:S:m:n:N:o:p:t:T:u:" opt; do
       echo "   -S server_ip"
       echo "   -s length_of_request, def 1024"
       echo "   -k private_ssh_key_file  if you need a private key to ssh to client host then use this option"
+      echo "   -l beg_cpu_lst  comma separated list of cpus on which to begin pinning of client/server pairs of processes. if -1 then no pinning is done"
       echo "   -m mode  mode= client or server or latency. this is for the case of running on the same host (so client_ip == server_ip)"
       echo "       if you are starting a run use '-m server'... the server code will invoke to client side. After the run you can do '-m latency' to gen latency stats"
       echo "       mode can also be server_scp which causes the tcp_*.sh, tcp_*.x and tcp_*.c files to be scp'd to client (if client!=server). scp'ing increases time of script when called from other scripts"
@@ -170,6 +171,7 @@ if [ "$USER" != "root" ]; then
   SSH_CMD_PFX=(sudo -u root -i bash -c)
 fi
   SSH_CMD_PFX=(sudo -u root -i bash -c)
+  SSH_CMD_PFX=(bash -c)
 TM_TOP=$(date +"%s.%N")
 MODE_IN=$MODE
 if [[ "$MODE_IN" == *"server"* ]]; then
@@ -320,7 +322,7 @@ if [ "$MODE" == "server" ]; then
     for ((i=0; i < $N_START; i++)); do
       NUMA="strace -o $ODIR/strace_server.txt "
       NUMA=
-      if [ "$BEG_CPU" != "" ]; then
+      if [[ "$BEG_CPU" != "" ]] && [[ "$BEG_CPU" != "-1" ]]; then
         NUMA="numactl -C $BEG_CPU "
         BEG_CPU=$((BEG_CPU+1))
         if [[ "$BEG_CPU" -ge "$NUM_CPUS" ]]; then
@@ -525,7 +527,7 @@ elif [ "$MODE" == "client" ]; then
     NN=$(printf "%.2d" $i)
     NUMA="strace -o $ODIR/strace_client.txt "
     NUMA=
-    if [ "$BEG_CPU" != "" ]; then
+    if [[ "$BEG_CPU" != "" ]] && [[ "$BEG_CPU" != "-1" ]]; then
       NUMA="numactl -C $BEG_CPU "
       BEG_CPU=$((BEG_CPU+1))
       if [[ "$BEG_CPU" -ge "$NUM_CPUS" ]]; then
