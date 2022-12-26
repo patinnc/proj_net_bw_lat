@@ -24,10 +24,13 @@ INTRVL=0
 NET_DEV=eth0
 
 #ODIR=$1
-while getopts "hvxa:d:f:i:N:s:t:w:" opt; do
+while getopts "hvxa:C:d:f:i:N:s:S:t:w:" opt; do
   case ${opt} in
     a )
       ACT=$OPTARG
+      ;;
+    C )
+      CLNT=$OPTARG
       ;;
     d )
       ODIR_IN=$OPTARG
@@ -43,6 +46,9 @@ while getopts "hvxa:d:f:i:N:s:t:w:" opt; do
       ;;
     s )
       SUM_FILE=$OPTARG
+      ;;
+    S )
+      SRVR=$OPTARG
       ;;
     t )
       TM_RUN=$OPTARG
@@ -187,11 +193,15 @@ if [ "$ACT" == "get" ]; then
     (lspci |grep Ethernet;echo ethtool -l; sudo ethtool -l $NET_DEV; echo ethtool -c; sudo ethtool -c $NET_DEV; echo ethtool -g; sudo ethtool -g $NET_DEV;) > $ODIR/ethtool.txt
     sudo ethtool -i $NET_DEV > $ODIR/ethtool_i.txt
 
-  LST_FLS=$(ls -1 /sys/class/net/$NET_DEV/statistics/)
+  USE_DEV=$NET_DEV
+  if [[ "$SRVR" == "127.0.0."* ]] || [[ "$CLNT" == "127.0.0."* ]]; then
+    USE_DEV="lo"
+  fi
+  LST_FLS=$(ls -1 /sys/class/net/$USE_DEV/statistics/)
   ETH_STATS=$ODIR/eth0_statistics_0.txt
   : > $ETH_STATS
   for j in $LST_FLS; do
-     v=$(sudo cat /sys/class/net/$NET_DEV/statistics/$j)
+     v=$(sudo cat /sys/class/net/$USE_DEV/statistics/$j)
      echo "$v $j" >> $ETH_STATS
   done
   cat /proc/softirqs > $ODIR/proc_softirqs_0.txt
@@ -295,7 +305,7 @@ if [ "$ACT" == "get" ]; then
   ETH_STATS=$ODIR/eth0_statistics_1.txt
   : > $ETH_STATS
   for j in $LST_FLS; do
-     v=$(cat /sys/class/net/$NET_DEV/statistics/$j)
+     v=$(cat /sys/class/net/$USE_DEV/statistics/$j)
      echo "$v $j" >> $ETH_STATS
   done
   cat /proc/interrupts > $ODIR/proc_interrupts_1.txt
@@ -580,6 +590,7 @@ fi
         exit(0);
       }' $ODIR/proc_stat_*.txt
     ck_last_rc $? $LINENO
+    echo "$0.$LINENO did awk -v num_cpus=$NUM_CPUS -v tm=$TM_RUN 'process proc_stat data' $ODIR/proc_stat_*.txt"
   fi
   
   if [[ -e $ODIR/netstat_s_0.txt ]] && [[ -e $ODIR/netstat_s_1.txt ]]; then

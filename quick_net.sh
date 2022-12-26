@@ -188,6 +188,7 @@ while getopts "bhvXzB:C:D:d:k:L:l:m:n:o:p:q:s:S:t:T:u:" opt; do
       echo "          basically the cfg_q* string broken into a '_' separated array where q* is the queue size, a* is adaptive rx tx enabled=1 disabled=0,"
       echo "          edit set_eth0 and look for \"ru\" to see section of code that handles the substrings and the ethtool cmds for that substring"
       echo "   -t time_to_run_in_secs usually 30-60 seconds is good enough in the lab. quick measurements of 10 secs seem okay. default = 20"
+      echo "   -u user  username for ssh"
       echo "   -T bw|lat|\"bw lat\"|bw,lat  test_typ can be bw or lat or both \"bw lat\". def is lat"
       echo "   -X   flag indicating you want to create a copy of the current dir's *.sh *.c *.x files on the client's $SCR_DIR"
       echo "   -v verbose mode"
@@ -251,14 +252,18 @@ fi
 #MY_IP=$(ifconfig |grep 192.168|awk '{printf("%s\n", $2);exit(0);}')
 if [ "$SRVR" != "" ]; then
    echo "$0.$LINENO ck srvr= $SRVR"
-MY_IP_NET_DEV=($(sudo ifconfig | awk '
+MY_IP_NET_DEV=($(sudo ifconfig | awk -v srvr="$SRVR" -v clnt="$CLNT" '
    /^ / {
     if ($1 == "inet" && dev != "") {printf("%s\n%s\n", $2, dev);}
    }
    /^[^ ]/{
      v = $1; gsub(/:/,"",v); dev = "";
+     if (index(srvr, "127.0.0.") > 0 && index($0,"LOOPBACK") > 0) {
+       dev = v;
+     } else {
      if (index($0,"LOOPBACK") == 0 && index($0, "RUNNING") > 0) {
        dev = v;
+     }
      }
    }'
    ))
@@ -289,6 +294,14 @@ fi
 #exit 1
 HST=192.168.1.168 # brc
 PAIRS=()
+if [[ "$SRVR" != "" ]] && [[ "$CLNT" != "" ]]; then
+  if [[ "$SRVR == "127.0.0."* ]] || [[ "$CLNT == "127.0.0."* ]]; then
+    MY_IP="127.0.0.1"
+    NET_DEV="lo"
+  fi
+  PAIRS+=($SRVR $CLNT)
+fi
+PAIRS+=(10.82.213.233 127.0.0.1)
 PAIRS+=(10.82.190.150 10.82.191.14) 
 PAIRS+=(10.82.191.14 10.82.190.150) # 
 PAIRS+=(192.168.1.187 192.168.1.130) # 
@@ -337,11 +350,19 @@ fi
 if [[ "$ODIR" != "" ]] && [[ ! -d "$ODIR" ]]; then
   mkdir -p $ODIR
 fi
-      CMD=$(printf "%q" "(cd $SCR_DIR/; mkdir -p tmp; mkdir -p $ODIR)")
-      echo $0.$LINENO ssh $OPT_KEYS $OPT_KEYS -A -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
-                      ssh $OPT_KEYS -A -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
-      RC=$?
-      ck_last_rc $RC $LINENO
+CMD_STR="(cd $SCR_DIR; mkdir -p tmp; mkdir -p $ODIR)"
+CMD="$(printf "%q" "(${CMD_STR})")"
+echo $0.$LINENO ssh $OPT_KEYS $OPT_KEYS -A -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
+if [[ "$OTHER" != "127.0.0."* ]]; then
+  ssh $OPT_KEYS -A -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
+else
+  echo "$0.$LINENO ${CMD_STR}"
+  ${SSH_CMD_PFX[@]} eval "${CMD_STR}"
+fi
+RC=$?
+ck_last_rc $RC $LINENO
+echo "$0.$LINENO got to here"
+
 if [[ ! -e ./tcp_client.x ]] || [[ ! -e ./tcp_server.x ]] || [[ ! -e ./tcp_sort_latency.x ]] || [[ ! -e ./get_tsc.x ]]; then
   XFER_IN=1
 fi
@@ -374,9 +395,14 @@ if [ "$XFER_IN" == "1" ]; then
       #ssh -t ${USER}@$OTHER sudo -u root -i bash -c "cd /root; tar xzf /tmp/proj_net_bw_lat_sml.tar.gz"
       #ssh -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} \"cd /root; tar xzf /tmp/proj_net_bw_lat_sml.tar.gz; whoami; pwd; ls -l\""
       #echo $0.$LINENO ssh -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
-      CMD=$(printf "%q" "(cd $SCR_DIR/..; tar xzf /tmp/proj_net_bw_lat_sml.tar.gz; whoami; pwd)")
+      CMD_STR="(cd $SCR_DIR/..; tar xzf /tmp/proj_net_bw_lat_sml.tar.gz; whoami; pwd)"
+      CMD=$(printf "%q" "${CMD_STR}")
+      if [[ "$OTHER" != "127.0.0."* ]]; then
       echo $0.$LINENO ssh $OPT_KEYS $OPT_KEYS -A -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
                       ssh $OPT_KEYS -A -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
+      else
+                      ${SSH_CMD_PFX[@]} eval "$CMD_STR"
+      fi
       RC=$?
       ck_last_rc $RC $LINENO
       echo "$0.$LINENO scp rc= $RC"
@@ -385,9 +411,14 @@ fi
 echo "$0.$LINENO ck scp"
 #exit 1
 
-CMD=$(printf "%q" "(cd $SCR_DIR; sudo $SCR_DIR/set_eth0.sh -c cfg_qmax; sudo $SCR_DIR/../60secs/set_freq.sh -g performance)")
+CMD_STR=$(printf "%q" "(cd $SCR_DIR; sudo $SCR_DIR/set_eth0.sh -c cfg_qmax; sudo $SCR_DIR/../60secs/set_freq.sh -g performance)")
+CMD=$(printf "%q" "${CMD_STR}")
 echo $0.$LINENO try ssh $OPT_KEYS -A -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
-                    ssh $OPT_KEYS -A -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
+      if [[ "$OTHER" != "127.0.0."* ]]; then
+        ssh $OPT_KEYS -A -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
+      else
+        ${SSH_CMD_PFX[@]} eval "${CMD_STR}"
+      fi
       RC=$?
       ck_last_rc $RC $LINENO
       echo "$0.$LINENO scp rc= $RC"
@@ -403,7 +434,9 @@ if [ "$XFER_IN" == "0" ]; then
 TAR=$($SCR_DIR/mk_tar_file.sh | awk '/^proj_net/{print $0;}')
 scp $OPT_KEYS ../$TAR ${USER}@$OTHER:
 CMD=$(printf "%q" "tar xzf $TAR")
+if [[ "$OTHER" != "127.0.0."* ]]; then
 ssh $OPT_KEYS -A -t ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
+fi
 #ssh $OPT_KEYS ${USER}@$OTHER "tar xzf $TAR"
 echo "$0.$LINENO did tar $TAR to ${USER}@$OTHER and untar"
 fi
@@ -528,8 +561,13 @@ done  # TST_TYP
 
 if [[ "$BOTH_IN" == "1" ]] && [[ "$TYP_NIC" == "brc" ]]; then
   echo "$0.$LINENO ssh $OPT_KEYS -A -t -n ${USER}@$OTHER \"cd $SCR_DIR; nohup ${QT_ARR[@]} &\""
-  CMD=$(printf "%q" "(cd $SCR_DIR; nohup ${QT_ARR[@]} &)")
-  ssh $OPT_KEYS -A -t -n ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
+  CMD_STR="(cd $SCR_DIR; nohup ${QT_ARR[@]} &)"
+  CMD=$(printf "%q" "${CMD_STR}")
+  if [[ "$OTHER" != "127.0.0."* ]]; then
+    ssh $OPT_KEYS -A -t -n ${USER}@$OTHER "${SSH_CMD_PFX[@]} $CMD"
+  else
+    ${SSH_CMD_PFX[@]} eval "$CMD_STR"
+  fi
   RC=$?
   ck_last_rc $RC $LINENO
   echo "$0.$LINENO ssh rc= $RC"

@@ -303,9 +303,9 @@ if [ "$MODE" == "server" ]; then
     fi
     pkill -2 -f $SCR_DIR/tcp_server.x
     CK_PID=$(pgrep -f $SCR_DIR/tcp_server.x)
-      if [ "$CK_PID" != "" ]; then
-        echo "$0.$LINENO __________________can't kill tcp_server.x. ck whats going on dude"
-      fi
+    if [ "$CK_PID" != "" ]; then
+      echo "$0.$LINENO __________________can't kill tcp_server.x. ck whats going on dude"
+    fi
     if [ "$CK_PID" != "" ]; then
       pkill -9 -f $SCR_DIR/tcp_server.x
       CK_PID=$(pgrep -f $SCR_DIR/tcp_server.x)
@@ -385,7 +385,7 @@ if [ "$MODE" == "server" ]; then
       SPIN_PID=$!
       TM_SPIN0=$(date +"%s.%N")
     fi
-    $SCR_DIR/get_new_pckts_frames_MBs_int.sh -N $NET_DEV -d $ODIR -t $TM_RUN $OPT_PKTS -a get $OPT_X &
+    $SCR_DIR/get_new_pckts_frames_MBs_int.sh -N $NET_DEV -d $ODIR -t $TM_RUN $OPT_PKTS -a get $OPT_X -S $SRVR -C $CLNT &
     STAT_PID=$!
     if [ "$LAT_CPU" != "" ]; then
       OPT_LAT=" -l $LAT_CPU "
@@ -401,16 +401,29 @@ if [ "$MODE" == "server" ]; then
       TM_DT=$(date)
       echo "$0.$LINENO got here"
       if [ 1 == 1 ]; then
-      CMD=$(printf "%q" "$SCR_DIR/do_tcp_client_server.sh $OPT_D $OPT_V $OPT_BW_MAX $OPT_PKTS -m client -S $SRVR -s $MSG_LEN -n $N_START -o $OUTS_REQ -t $TM_RUN -p $PORT_RD,$PORT_WR -d $ODIR $OPT_LAT $OPT_SKIP_CLIENT_LAT ")
+      CMD_STR="$SCR_DIR/do_tcp_client_server.sh $OPT_D $OPT_V $OPT_BW_MAX $OPT_PKTS -m client -S $SRVR -C $CLNT -s $MSG_LEN -n $N_START -o $OUTS_REQ -t $TM_RUN -p $PORT_RD,$PORT_WR -d $ODIR $OPT_LAT $OPT_SKIP_CLIENT_LAT "
+      CMD=$(printf "%q" "$CMD_STR")
       echo $0.$LINENO ssh $OPT_KEYS -A -t ${USER}@$CLNT "${SSH_CMD_PFX[@]} $CMD" > $ODIR/start_do_tcp_client_server.sh.txt
       echo "$0.$LINENO before do_tcp_client_server.sh -m client got here beg date_time= $TM_DT abs_ts= $TM_beg"
-                      ssh $OPT_KEYS -A -t ${USER}@$CLNT "${SSH_CMD_PFX[@]} $CMD" >> $ODIR/start_do_tcp_client_server.sh.txt
+      if [[ "$CLNT" != "127.0.0."* ]]; then
+          ssh $OPT_KEYS -A -t ${USER}@$CLNT "${SSH_CMD_PFX[@]} $CMD" >> $ODIR/start_do_tcp_client_server.sh.txt
+      else
+        echo "$0.$LINENO start_client cmd ${SSH_CMD_PFX[@]} eval ${CMD_STR} >> $ODIR/start_do_tcp_client_server.sh.txt"
+        echo "$0.$LINENO start_client cmd ${SSH_CMD_PFX[@]} eval ${CMD_STR}" >> $ODIR/trace_cmds.txt
+        #${SSH_CMD_PFX[@]} eval "${CMD_STR}" >> $ODIR/start_do_tcp_client_server.sh.txt
+        eval "${CMD_STR}" >> $ODIR/start_do_tcp_client_server.sh.txt
+      fi
       RC=$?
       ck_last_rc $RC $LINENO
       echo "$0.$LINENO ssh rc= $RC"
       else
       echo $0.$LINENO ssh $OPT_KEYS -A -t  ${USER}@${CLNT} "$SCR_DIR/do_tcp_client_server.sh $OPT_D $OPT_V $OPT_BW_MAX $OPT_PKTS -m client -S $SRVR -s $MSG_LEN -n $N_START -o $OUTS_REQ -t $TM_RUN -p $PORT_RD,$PORT_WR -d $ODIR $OPT_LAT $OPT_SKIP_CLIENT_LAT " > $ODIR/start_do_tcp_client_server.sh.txt
+      if [[ "$CLNT" != "127.0.0."* ]]; then
                       ssh $OPT_KEYS -A -t ${USER}@${CLNT} "$SCR_DIR/do_tcp_client_server.sh $OPT_D $OPT_V $OPT_BW_MAX $OPT_PKTS -m client -S $SRVR -s $MSG_LEN -n $N_START -o $OUTS_REQ -t $TM_RUN -p $PORT_RD,$PORT_WR -d $ODIR $OPT_LAT $OPT_SKIP_CLIENT_LAT " >> $ODIR/start_do_tcp_client_server.sh.txt
+      else
+        echo "$0.$LINENO ${CMD_STR}"
+        eval "${CMD_STR}"
+      fi
       RC=$?
       ck_last_rc $RC $LINENO
       echo "$0.$LINENO ssh rc= $RC"
@@ -542,6 +555,7 @@ elif [ "$MODE" == "client" ]; then
     #if [[ "$VERBOSE" -gt "0" ]]; then
     echo "$0.$LINENO $NUMA $SCR_DIR/tcp_client.x $OPT_D $OPT_V $OPT_BW_MAX $OPT_PKTS -H $SRVR -s $MSG_LEN -t $TM_RUN $OPT_ALT -p $PR,$PW -d $ODIR $OPT_SKP_LAT i= $i PORT= $PORT   > $ODIR/tmp_tcp_client.${NN}.cmdline.txt"
     #fi
+        echo "$0.$LINENO nohup_client nohup $NUMA $SCR_DIR/tcp_client.x $OPT_D $OPT_V $OPT_BW_MAX $OPT_PKTS -H $SRVR -s $MSG_LEN -t $TM_RUN $OPT_ALT -p $PR,$PW -d $ODIR $OPT_SKP_LAT > $ODIR/tmp_tcp_client.${NN}.txt 2> $ODIR/tmp_tcp_client.${NN}.stderr.txt &" >> $ODIR/trace_cmds.txt
                nohup $NUMA $SCR_DIR/tcp_client.x $OPT_D $OPT_V $OPT_BW_MAX $OPT_PKTS -H $SRVR -s $MSG_LEN -t $TM_RUN $OPT_ALT -p $PR,$PW -d $ODIR $OPT_SKP_LAT > $ODIR/tmp_tcp_client.${NN}.txt 2> $ODIR/tmp_tcp_client.${NN}.stderr.txt &
     PR=$((PR+PORT_INC))
     PW=$((PW+PORT_INC))
@@ -554,7 +568,6 @@ elif [ "$MODE" == "client" ]; then
   TM_DFF=$(awk -v tm_bef_wait="$TM_BEF_WAIT" -v tm_bef="$TM_bef" -v tm_aft="$TM_aft" -v tm_end="$TM_end" 'BEGIN{printf("tm_tcp_client.x= %.3f tm_post= %.3f tm_elap= %.3f abs_ts abs_ts_bef_start_clients= %.6f tm_dff_to_start_clients= %.3f\n",
        tm_aft-tm_bef, tm_end-tm_aft, tm_end-tm_bef, tm_bef_wait, tm_bef_wait-tm_bef); exit(0);}')
   echo "$0.$LINENO finished client side: $TM_DFF"
-  echo "$0.$LINENO got at end of client section" >> $ODIR/trace_cmds.txt
   echo "$0.$LINENO got end_of_client tm_dff= $TM_DFF" >> $ODIR/trace_cmds.txt
   echo "$0.$LINENO got end_of_client tm_dff= $TM_DFF"
   exit 0
@@ -567,10 +580,16 @@ if [[ "$MODE" == "latency" ]]; then
   TMP_UNSRTED=$ODIR/tmp_lat_all_unsorted.txt
   OSORT="$ODIR/tcp_client_latency_all.txt"
   if [ ! -e $TMP_UNSRTED ]; then
-      CMD=$(printf "%q" "cd $SCR_DIR; cat $ODIR/tcp_client_*_latency.txt > /tmp/tmp_lat_all_unsorted.txt")
+      CMD_STR="cd $SCR_DIR; cat $ODIR/tcp_client_*_latency.txt > /tmp/tmp_lat_all_unsorted.txt"
+      CMD=$(printf "%q" "${CMD_STR}")
       echo "$0.$LINENO got here"
       echo $0.$LINENO ssh $OPT_KEYS -A -t ${USER}@$CLNT "${SSH_CMD_PFX[@]} $CMD"
+      if [[ "$CLNT" != "127.0.0."* ]]; then
                       ssh $OPT_KEYS -A -t ${USER}@$CLNT "${SSH_CMD_PFX[@]} $CMD"
+      else
+        echo "$0.$LINENO ${CMD}"
+        ${SSH_CMD_PFX[@]} eval "${CMD_STR}"
+      fi
       RC=$?
       ck_last_rc $RC $LINENO
       echo "$0.$LINENO ssh rc= $RC"
@@ -581,9 +600,15 @@ if [[ "$MODE" == "latency" ]]; then
       RC=$?
       ck_last_rc $RC $LINENO
       echo "$0.$LINENO scp rc= $RC"
-                   CMD=$(printf "%q" "cd $SCR_DIR/$ODIR; rm /tmp/tmp_lat_all_unsorted.txt; rm tcp_client_80*_latency.txt")
+      CMD_STR="cd $SCR_DIR/$ODIR; rm /tmp/tmp_lat_all_unsorted.txt; rm tcp_client_80*_latency.txt"
+      CMD=$(printf "%q" "${CMD_STR}")
       echo "$0.$LINENO got here"
+      if [[ "$CLNT" != "127.0.0."* ]]; then
                    ssh $OPT_KEYS -A -t ${USER}@$CLNT "${SSH_CMD_PFX[@]} $CMD"
+      else
+        echo "$0.$LINENO ${CMD_STR}"
+        ${SSH_CMD_PFX[@]} eval "${CMD_STR}"
+      fi
       RC=$?
       ck_last_rc $RC $LINENO
       echo "$0.$LINENO ssh rc= $RC"

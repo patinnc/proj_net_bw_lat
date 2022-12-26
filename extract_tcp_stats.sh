@@ -15,6 +15,14 @@ VERBOSE=0
 if [[ "$2" != "" ]]; then
   VERBOSE=1
 fi
+ck_last_rc() {
+   local RC=$1
+   local FROM=$2
+   if [ $RC -gt 0 ]; then
+      echo "$0: got non-zero RC=$RC at $LINENO. called from line $FROM" > /dev/stderr
+      exit $RC
+   fi
+}
 
 gawk -v verbose="$VERBOSE" '
  BEGIN{
@@ -189,7 +197,9 @@ function prt_stats()
    c[++nc]= cs;
    c[++nc]= bsy;
    c[++nc]= pkts_ps/cs;
+   if ((bw+0) == 0) { printf("_____got bw= 0. its a problem\n"); c[++nc] = 0; } else {
    c[++nc]= bsy/(0.001*bw);
+   }
    c[++nc]= delack;
    c[++nc]= extdelack;
    c[++nc]= quickack;
@@ -229,6 +239,11 @@ function prt_stats()
 
    v1 = cmd_ln[grp,gj,"LAT_CPU"];
    if (v1 == "") { v1 = "unk"; }
+   if ((bw+0) == 0) {
+     bsy_bw = 0;
+   } else {
+     bsy_bw = bsy/(0.001*bw);
+   }
    det_str = sprintf("QQ_%s_%d %s %s %.3f %.3f %.3f %.3f %s %.3f %.3f %.3f %s %.3f %.3f %.3f %.3f %s %s %s %d %s %.3f %.3f %.3f %.3f %s ""%d %d %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %d %s %s",
      typ_tst, gj-1, q_sz, v1, tot_rpsK, p50, p90, p99, "cfg_q"q_sz, bsy, ps_busyTL, usr_sys, cfg,
      frq, bw, pkts_ps, tot_intr_Kps,
@@ -237,7 +252,7 @@ function prt_stats()
 #ps_tot_int_rateK/s ps_net_irq_rateK/s ps_net_sftirq_rateK/s ps_cs_rateK/s pct_stdev_int/q
      tot_intr_Kps, net_irqs, softirqs_Kps, cs, 0,
 
-     grp, outs, bw, pkts_ps, cs, bsy, pkts_ps/cs, bsy/(0.001*bw), delack, extdelack, quickack, cork, N, grp_cfg[grp]);
+     grp, outs, bw, pkts_ps, cs, bsy, pkts_ps/cs, bsy_bw, delack, extdelack, quickack, cork, N, grp_cfg[grp]);
    printf("%s\n", det_str);
    if (dif_one++ == 0) {
      hdr_n = split(hdr_str, hdr_arr, " ");
@@ -290,6 +305,7 @@ function prt_stats()
    }
  }
  ' "$INF"
+ ck_last_rc $? $LINENO
 exit 0
 
 # below from http://www.dayofthenewdan.com/2012/12/26/AWK_Linear_Regression.html
